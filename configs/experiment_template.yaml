@@ -1,0 +1,17 @@
+# A longer MOCK example. Switch to a real backend only after implementing its adapter.
+# Copy this file per experiment rather than changing several notebook cells.
+seed: 42
+backend: mock
+policy: edf
+concurrency: 4
+deadline_budget_s: 3.0
+mock:
+  prefill_s: 0.002
+  token_s: 0.001
+workload:
+  phases:
+    - {name: steady, duration_s: 10, rate_rps: 5}
+    - {name: burst, duration_s: 10, rate_rps: 25}
+    - {name: recovery, duration_s: 10, rate_rps: 5}
+  input_tokens: [128, 1024]
+  output_tokens: [32, 128]

@@ -1,0 +1,16 @@
+# Artificial CPU delays: these results are only a setup check.
+seed: 42
+backend: mock
+policy: fifo
+concurrency: 2
+deadline_budget_s: 1.0
+mock:
+  prefill_s: 0.002
+  token_s: 0.001
+workload:
+  phases:
+    - {name: steady, duration_s: 0.15, rate_rps: 20}
+    - {name: burst, duration_s: 0.30, rate_rps: 80}
+    - {name: recovery, duration_s: 0.15, rate_rps: 20}
+  input_tokens: [32, 128]
+  output_tokens: [8, 24]
