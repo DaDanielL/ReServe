@@ -2,7 +2,7 @@
 backend: replay
 policy: compare
 seed: 42
-deadline_budget_s: 6
+deadline_rule: distserve-chat
 workload:
   source: burstgpt
   path: data/BurstGPT_1.csv

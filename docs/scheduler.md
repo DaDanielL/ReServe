@@ -1,5 +1,7 @@
 # Scheduler implementation and evaluation
 
+For the measured Qwen experiment, its public workloads, and its per-request deadline derivation, see the [live experiment guide](live-experiment.md).
+
 ReServe asks whether changing which requests start during a traffic burst can bring higher-precision weights back sooner while preserving on-time service. The scheduler returns a list of waiting request IDs for the next iteration. The device owns cache allocation and the precision transition.
 
 ## Follow one iteration
@@ -98,4 +100,4 @@ Each synthetic run with seed 42 below has 98 arrivals. The observation duration 
 
 Across seeds 41, 42 and 43, the forecast returned later than cost on all three default bursts. With the long-tail workload it returned later on seeds 41 and 42 and earlier on seed 43 (0.720 s versus 0.803 s). On the tighter 0.4-second deadline the forecast served 65/78, 54/98 and 57/98 on time across those three seeds. Cost served 72/78, 52/98 and 67/98. The forecast's benefit depends on the workload and deadline. These results provide a comparison to repeat after GPU calibration.
 
-The BurstGPT run used 1,049 calibration requests and 27 eligible held-out arrivals. The source had 66 calibration failures and 3 evaluation failures. All 27 eligible arrivals met their deadline and the dynamic runs stayed in high precision. The window validates real-trace replay and contributes a no-switch observation.
+The historical BurstGPT run used the earlier fixed six-second budget. The current BurstGPT preset derives a target per request from the held-out length predictor and DistServe streaming targets. The historical run used 1,049 calibration requests and 27 eligible held-out arrivals. The source had 66 calibration failures and 3 evaluation failures. All 27 eligible arrivals met their deadline and the dynamic runs stayed in high precision. The window validates real-trace replay and contributes a no-switch observation.

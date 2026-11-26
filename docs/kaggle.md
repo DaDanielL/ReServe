@@ -1,6 +1,9 @@
 # Kaggle workflow
 
-## First session
+For the measured scheduling experiment, select a GPU and Internet access, upload [kaggle_live.ipynb](../notebooks/kaggle_live.ipynb), and run its cells. It installs the branch, runs all six policies on one device, and archives the measurements. [Experimental settings and offline inputs](live-experiment.md)
+
+## Original CPU starter
+### First session
 
 1. Create a private Kaggle notebook and select an available GPU for real inference.
    The CPU smoke check does not need GPU allocation.
@@ -17,7 +20,7 @@
 Use Kaggle Secrets for any Hugging Face or GitHub credentials needed by your
 chosen workflow. Do not print them. The starter launcher itself needs no secrets.
 
-## Real inference environment
+### Starter environment
 
 The launcher installs only the base package and plotting dependency. Select the
 HF or vLLM optional dependencies deliberately after recording the actual GPU.

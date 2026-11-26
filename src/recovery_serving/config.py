@@ -33,9 +33,20 @@ def load_config(path: str | Path, *, scenario: str | None = None) -> dict:
     backend = config.get("backend")
     if backend not in {"mock", "replay"}:
         raise ValueError("backend must be mock or replay")
-    if type(config.get("seed")) is not int or not _positive(config.get("deadline_budget_s")):
-        raise ValueError("expected an integer seed and positive deadline_budget_s")
+    if type(config.get("seed")) is not int:
+        raise ValueError("expected an integer seed")
     workload = config["workload"]
+    rule = config.get("deadline_rule")
+    if rule is not None:
+        if (
+            backend != "replay"
+            or workload.get("source") != "burstgpt"
+            or rule != "distserve-chat"
+            or "deadline_budget_s" in config
+        ):
+            raise ValueError("distserve-chat applies to BurstGPT and supplies its deadline rule")
+    elif not _positive(config.get("deadline_budget_s")):
+        raise ValueError("expected positive deadline_budget_s")
     scenarios = config.pop("scenarios", {})
     if scenario is not None:
         if backend != "replay" or scenario not in scenarios:

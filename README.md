@@ -8,6 +8,17 @@ ESE6800 research starter for Daniel Lin and Zichen Fu.
 return to higher weight precision after a traffic burst, while preserving
 deadline goodput and fair treatment of long requests?
 
+## Run the actual Qwen scheduler
+
+Install the PyTorch build for your CPU or NVIDIA driver, then run from this branch:
+
+```bash
+python -m pip install -e ".[live]"
+python -m recovery_serving.live --device cuda:0 --output results/qwen-local
+```
+
+The command downloads the pinned Qwen2.5-1.5B-Instruct checkpoint and public workload, profiles disjoint prompts, freezes request deadlines, and executes all six policies on one device. For CPU use `--device cpu`. The first GPU run uses FP16. The flags `--source qwen-math` and `--deadline-mode artifact` select the public Qwen math cohort and the JITServe stored benchmark budgets, respectively. Artifact budgets apply to JITServe prompts. [Local run guide and paper evidence](docs/live-experiment.md) · [Kaggle GPU notebook](notebooks/kaggle_live.ipynb)
+
 ## What works now
 
 - Seeded Poisson arrivals across steady, burst, and recovery traffic phases.
@@ -19,8 +30,7 @@ deadline goodput and fair treatment of long requests?
 
 The mock backend uses artificial sleeps to check the client harness. The replay backend
 models individual prefill and decode steps on a logical clock. Its default GPU timings,
-cache capacities, and serialized weight copy are fixtures. Real GPU profiling and
-precision switching are separate integration work.
+cache capacities, and serialized weight copy are fixtures. For measured model execution and live precision switching use the Qwen command above.
 
 ## Run the scheduler comparison
 

@@ -180,6 +180,7 @@ def main():
     if args.deadline_budget_s is not None:
         if not math.isfinite(args.deadline_budget_s) or args.deadline_budget_s <= 0:
             parser.error("--deadline-budget-s must be finite and positive")
+        config.pop("deadline_rule", None)
         config["deadline_budget_s"] = args.deadline_budget_s
     if args.prediction_scale is not None:
         config["prediction_scale"] = args.prediction_scale

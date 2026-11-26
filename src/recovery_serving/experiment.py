@@ -4,12 +4,13 @@ import csv
 import hashlib
 import json
 import math
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from .metrics import summarize_replay
 from .replay import Replay, ReplaySettings, StepTiming
-from .scheduling import LengthPredictor, RecoveryAwareScheduler
+from .scheduling import LengthPredictor, OnlineRequest, RecoveryAwareScheduler
 from .workload import (
     burstgpt_trace,
     generate_trace,
@@ -33,8 +34,20 @@ def prepare(config):
     workload = config["workload"]
     if workload.get("source", "synthetic") == "burstgpt":
         trace, calibration, window, meta = burstgpt_trace(
-            Path(workload["path"]), workload["burstgpt"], config["deadline_budget_s"]
+            Path(workload["path"]), workload["burstgpt"], config.get("deadline_budget_s", 0.0)
         )
+        if config.get("deadline_rule") == "distserve-chat":
+            # DistServe Table 1, OPT-13B chatbot streaming targets. The E2E conversion is ours.
+            trained = LengthPredictor(calibration, config["replay"].get("quantile", 0.8))
+            derived = []
+            for r in trace:
+                observed = OnlineRequest(r.request_id, r.arrival_s, 0.0, r.input_tokens)
+                length = trained.remaining(observed)
+                derived.append(replace(r, deadline_s=r.arrival_s + 0.25 + (length - 1) * 0.10))
+            trace = derived
+            meta["deadline_rule"] = (
+                "distserve-chat: 0.25s + 0.10s per predicted token after the first"
+            )
         bursts = peak_window(trace, window, workload["burst_bin_s"], workload["burst_factor"])
     else:
         seed = config["calibration_seed"]
