@@ -1,0 +1,48 @@
+# CPU fixtures. Replace timing coefficients and capacities with measured settings for research runs.
+backend: replay
+policy: compare
+seed: 42
+calibration_seed: 731
+calibration_size: 2000
+deadline_budget_s: 2.5
+workload:
+  phases:
+    - {name: steady, duration_s: 0.8, rate_rps: 6}
+    - {name: burst, duration_s: 0.7, rate_rps: 105}
+    - {name: recovery, duration_s: 1.5, rate_rps: 6}
+  classes:
+    - {weight: 5, input_tokens: [12, 40], output_tokens: [4, 16]}
+    - {weight: 3, input_tokens: [64, 112], output_tokens: [48, 90]}
+    - {weight: 2, input_tokens: [120, 180], output_tokens: [6, 18]}
+scenarios:
+  mild:
+    phases:
+      - {name: steady, duration_s: 0.8, rate_rps: 6}
+      - {name: burst, duration_s: 0.7, rate_rps: 22}
+      - {name: recovery, duration_s: 1.5, rate_rps: 6}
+  long-tail:
+    classes:
+      - {weight: 3, input_tokens: [12, 40], output_tokens: [4, 16]}
+      - {weight: 5, input_tokens: [64, 112], output_tokens: [72, 96]}
+      - {weight: 2, input_tokens: [120, 180], output_tokens: [6, 18]}
+replay:
+  block_tokens: 8
+  high_blocks: 60
+  low_blocks: 180
+  staging_blocks: 4
+  max_batch: 12
+  batch_tokens: 512
+  max_new_tokens: 96
+  down_queue: 8
+  up_queue: 6
+  min_low_s: 0.035
+  restore_s: 0.025
+  lookahead: 12
+  max_wait_s: 1.5
+  followup_s: 5
+  sustain_s: 0.08
+  long_output_tokens: 48
+timing:
+  source: artificial_cpu_fixture
+  high: {step_s: 0.002, prefill_token_s: 0.00003, decode_request_s: 0.00014}
+  low: {step_s: 0.0021, prefill_token_s: 0.000032, decode_request_s: 0.00015}

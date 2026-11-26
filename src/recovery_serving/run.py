@@ -1,10 +1,11 @@
-"""Run an open-loop CPU smoke benchmark and save a complete trace."""
+"""Run the open-loop CPU smoke harness or an iteration-level scheduling replay."""
 
 import argparse
 import asyncio
 import csv
 import importlib.metadata
 import json
+import math
 import platform
 import subprocess
 import sys
@@ -13,6 +14,7 @@ from time import perf_counter
 
 from .backends.mock import MockBackend
 from .config import load_config
+from .experiment import VARIANTS, run_experiment
 from .metrics import summarize
 from .scheduling import priority
 from .workload import generate_trace
@@ -42,6 +44,8 @@ def environment() -> dict:
 
 
 async def run(config: dict, output: Path) -> dict:
+    if config["backend"] == "replay":
+        return run_experiment(config, output, environment())
     # Refuse to overwrite an earlier experiment.
     output.mkdir(parents=True, exist_ok=False)
     trace = generate_trace(config)
@@ -147,8 +151,51 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--scenario", help="select a named workload variant from the replay config")
+    parser.add_argument("--seed", type=int, help="override the evaluation trace seed")
+    parser.add_argument(
+        "--policy", choices=["compare", *VARIANTS], help="run a replay comparison or one variant"
+    )
+    parser.add_argument(
+        "--steady-control", action="store_true", help="evenly space the same replay requests"
+    )
+    parser.add_argument("--burstgpt", type=Path, help="override the CSV path in a BurstGPT config")
+    parser.add_argument(
+        "--prediction-scale", type=float, help="scale calibration lengths to test prediction error"
+    )
+    parser.add_argument(
+        "--deadline-budget-s", type=float, help="default deadline budget from arrival"
+    )
+    parser.add_argument("--restore-s", type=float, help="override simulated weight-copy duration")
     args = parser.parse_args()
-    summary = asyncio.run(run(load_config(args.config), args.output))
+    config = load_config(args.config, scenario=args.scenario)
+    if (
+        args.policy
+        or args.steady_control
+        or args.burstgpt
+        or args.prediction_scale is not None
+        or args.restore_s is not None
+    ) and config["backend"] != "replay":
+        parser.error("these comparison options require a replay config")
+    if args.deadline_budget_s is not None:
+        if not math.isfinite(args.deadline_budget_s) or args.deadline_budget_s <= 0:
+            parser.error("--deadline-budget-s must be finite and positive")
+        config["deadline_budget_s"] = args.deadline_budget_s
+    if args.prediction_scale is not None:
+        config["prediction_scale"] = args.prediction_scale
+    if args.restore_s is not None:
+        config["replay"]["restore_s"] = args.restore_s
+    if args.seed is not None:
+        config["seed"] = args.seed
+    if args.policy:
+        config["policy"] = args.policy
+    if args.steady_control:
+        config["steady_control"] = True
+    if args.burstgpt:
+        if config["workload"].get("source") != "burstgpt":
+            parser.error("--burstgpt requires a BurstGPT workload")
+        config["workload"]["path"] = str(args.burstgpt)
+    summary = asyncio.run(run(config, args.output))
     print(json.dumps(summary, indent=2))
 
 

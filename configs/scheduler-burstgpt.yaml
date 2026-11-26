@@ -1,0 +1,37 @@
+# Real arrival/length records, simulated GPU. See README for the pinned data revision.
+backend: replay
+policy: compare
+seed: 42
+deadline_budget_s: 6
+workload:
+  source: burstgpt
+  path: data/BurstGPT_1.csv
+  burstgpt:
+    model: ChatGPT
+    log_type: Conversation log
+    calibration_window_s: [28800, 57600]
+    evaluation_window_s: [126000, 126600]
+    time_scale: 0.002
+  burst_bin_s: 0.1
+  burst_factor: 1.5
+replay:
+  block_tokens: 16
+  high_blocks: 480
+  low_blocks: 1400
+  staging_blocks: 32
+  max_batch: 16
+  batch_tokens: 4096
+  max_new_tokens: 2048
+  down_queue: 8
+  up_queue: 6
+  min_low_s: 0.05
+  restore_s: 0.025
+  lookahead: 32
+  max_wait_s: 3
+  followup_s: 15
+  sustain_s: 0.1
+  long_output_tokens: 512
+timing:
+  source: artificial_cpu_fixture
+  high: {step_s: 0.001, prefill_token_s: 0.000015, decode_request_s: 0.00004}
+  low: {step_s: 0.0011, prefill_token_s: 0.000016, decode_request_s: 0.000045}

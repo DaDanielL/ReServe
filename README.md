@@ -14,12 +14,29 @@ deadline goodput and fair treatment of long requests?
 - A CPU-only mock backend and FIFO / earliest-deadline-first client admission.
 - Per-request timings, an event log, configuration and Git metadata, and summary metrics.
 - A Kaggle launcher, plotting script, environment check, and GitHub CPU checks.
-- Explicit extension points for a real backend, engine scheduler, and precision controller.
+- A deterministic CPU replay with deadline-slack, drain, and recovery-aware admission.
+- Six matched comparisons, synthetic bursts, a BurstGPT CSV reader, per-request and recovery metrics, and plots.
 
-**This is a starter, not an implementation of MorphServe or DPS.** The mock backend
-uses artificial sleeps. Its timings validate the harness only. No model inference,
-KV-memory reclamation, weight transfer, precision recovery, or quality measurement
-is implemented. FIFO/EDF operate at client admission, not inside an LLM engine.
+The mock backend uses artificial sleeps to check the client harness. The replay backend
+models individual prefill and decode steps on a logical clock. Its default GPU timings,
+cache capacities, and serialized weight copy are fixtures. Real GPU profiling and
+precision switching are separate integration work.
+
+## Run the scheduler comparison
+
+From the repository root with Python 3.10 or newer:
+
+```bash
+python -m pip install -e '.[analysis,dev]'
+recovery-run --config configs/scheduler.yaml --output results/scheduler-42
+python scripts/plot_replay.py results/scheduler-42 --output results/figures-42
+```
+
+Each variant receives the same calibration data, arrivals, deadlines, and observation
+window. The run saves its inputs, per-policy events and request rows, and a comparison
+summary. The plotting command produces an occupancy timeline, recovery versus goodput,
+and a CSV of paired differences. See the [scheduler and evaluation guide](docs/scheduler.md)
+for definitions, replay assumptions, BurstGPT commands, and the device interface.
 
 ## Start locally
 
@@ -44,12 +61,14 @@ recovery_serving.run` in place of `recovery-run` on Linux/macOS.
 | Path | Purpose |
 | --- | --- |
 | `configs/` | Versioned experiment settings |
-| `src/recovery_serving/workload.py` | Reproducible arrival traces |
-| `src/recovery_serving/scheduling.py` | Admission baselines and future recovery policy |
+| `src/recovery_serving/workload.py` | Synthetic and BurstGPT request traces |
+| `src/recovery_serving/scheduling.py` | Client priorities and iteration-level admission policies |
 | `src/recovery_serving/precision.py` | Future switching and memory-state interface |
 | `src/recovery_serving/backends/` | Mock execution and real-engine integration boundary |
-| `src/recovery_serving/run.py` | Open-loop runner and event recording |
-| `src/recovery_serving/metrics.py` | Summary calculations |
+| `src/recovery_serving/run.py` | CLI for the mock and replay backends |
+| `src/recovery_serving/replay.py` | Logical-clock engine and reference memory controller |
+| `src/recovery_serving/experiment.py` | Paired comparison, input hashes, and output files |
+| `src/recovery_serving/metrics.py` | Service, fairness, and sustained recovery metrics |
 | `notebooks/kaggle_start.ipynb` | Thin Kaggle launcher |
 | `scripts/` | Environment check and analysis |
 | `tests/` | CPU checks for scheduling, traces, reporting, and the runner |
@@ -78,7 +97,7 @@ GPU. Avoid independently upgrading PyTorch after installing vLLM. Once one setup
 works, save `python -m pip freeze` with its run outputs and document the working
 versions in `docs/kaggle.md`. Restart the notebook kernel if needed after installation.
 
-## Run outputs
+## Mock harness outputs
 
 Each directory contains `run.json`, `workload.jsonl`, `events.jsonl`,
 `requests.csv`, and `summary.json`. `run.json` records the config, relevant package
@@ -90,9 +109,8 @@ client workers are busy. In the supplied configs every request has the same
 deadline budget, so EDF and FIFO have identical ordering. Vary budgets by request
 class when studying heterogeneous deadlines.
 
-The generated output length is known to the mock backend, but is not used by the
-FIFO/EDF scheduler. A future length-aware policy must distinguish predicted length
-from true length; true future lengths are an oracle upper bound only.
+In replay, the simulator alone receives true output lengths. The scheduler receives
+observable progress and estimates remaining length from a separate calibration set.
 
 ## Work together
 

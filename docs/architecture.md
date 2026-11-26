@@ -6,7 +6,7 @@
 
 This path works on a CPU. The queue limits concurrent client calls. It does not
 perform continuous batching, schedule individual decoding steps, or manage KV memory.
-`VLLMBackend` and `RecoveryAwareScheduler` deliberately raise `NotImplementedError`.
+A separate CPU replay calls `RecoveryAwareScheduler` at iteration boundaries. The live `VLLMBackend` remains a placeholder. See the [scheduler guide](scheduler.md) for the replay interface.
 `PrecisionController` is a protocol, not a functioning controller.
 
 ## Real system path to build
