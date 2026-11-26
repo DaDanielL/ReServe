@@ -19,6 +19,21 @@ python -m recovery_serving.live --device cuda:0 --output results/qwen-local
 
 The command downloads the pinned Qwen2.5-1.5B-Instruct checkpoint and public workload, profiles disjoint prompts, freezes request deadlines, and executes all six policies on one device. For CPU use `--device cpu`. The first GPU run uses FP16. The flags `--source qwen-math` and `--deadline-mode artifact` select the public Qwen math cohort and the JITServe stored benchmark budgets, respectively. Artifact budgets apply to JITServe prompts. [Local run guide and paper evidence](docs/live-experiment.md) · [Kaggle GPU notebook](notebooks/kaggle_live.ipynb)
 
+### Run the pilot and full experiment suite
+
+With the GPU environment active, run these commands from the ReServe repository root.
+The pilot uses the real model for a three-request execution check and an eight-request
+policy comparison.
+
+```powershell
+python -m pip install -e ".[live,analysis]"
+python scripts/run_reserve_experiments.py pilot
+```
+
+After the pilot finishes, run `python scripts/run_reserve_experiments.py all`.
+The suite reuses completed comparisons with matching settings in `results/device-suite`.
+Append `--plan` to either command to preview the cases before running them.
+
 ## What works now
 
 - Seeded Poisson arrivals across steady, burst, and recovery traffic phases.
