@@ -10,7 +10,7 @@ from tempfile import TemporaryDirectory
 
 from .metrics import summarize_replay
 from .replay import Replay, ReplaySettings, StepTiming
-from .scheduling import LengthPredictor, OnlineRequest, RecoveryAwareScheduler
+from .scheduling import LengthPredictor, OnlineRequest, RecoveryAwareScheduler, canonical_policy
 from .workload import (
     burstgpt_trace,
     generate_trace,
@@ -24,9 +24,9 @@ VARIANTS = {
     "fixed_high": ("high", "fifo"),
     "fixed_low": ("low", "fifo"),
     "pressure": ("dynamic", "fifo"),
-    "cost": ("dynamic", "cost"),
+    "time-based": ("dynamic", "time-based"),
     "drain": ("dynamic", "drain"),
-    "recovery": ("dynamic", "recovery"),
+    "space-based": ("dynamic", "space-based"),
 }
 
 
@@ -68,6 +68,7 @@ def prepare(config):
 
 
 def run_experiment(config: dict, output: Path, environment: dict) -> dict:
+    config = {**config, "policy": canonical_policy(config["policy"])}
     s = ReplaySettings(**config["replay"])
     timings = {m: StepTiming(**config["timing"][m]) for m in ("high", "low")}
     trace, calibration, window, bursts, source = prepare(config)

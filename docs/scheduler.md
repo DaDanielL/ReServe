@@ -21,9 +21,9 @@ The online observation contains request ID, arrival time, absolute deadline, pro
 | `fixed_high` | Earliest feasible arrival first with a fixed high-precision cache budget. |
 | `fixed_low` | The same queue rule with a fixed low-precision cache budget. |
 | `pressure` | The same queue rule with the shared dynamic controller. |
-| `cost` | Dynamic controller and smallest estimated deadline slack first. |
-| `drain` | Cost ranking with a pause on elective admissions while a return is pending. Running requests can finish and release memory. |
-| `recovery` | Cost ranking with a forecast of live cache after a fixed number of generation steps. A candidate can enter if the projected batch fits the high-precision restore budget. |
+| `time-based` | Dynamic controller and smallest estimated deadline slack first. |
+| `drain` | Deadline-slack ranking with a pause on elective admissions while a return is pending. Running requests can finish and release memory. |
+| `space-based` | Deadline-slack ranking with a forecast of live cache after a fixed number of generation steps. A candidate can enter if the projected batch fits the high-precision restore budget. |
 
 The predictor learns output-length distributions from separate calibration requests. It groups prompt lengths into power-of-two ranges. Once a request has already produced 8 tokens, for example, it uses only comparable historical outputs longer than 8 tokens. It falls back to the pooled calibration data if its prompt bucket has no survivors. Outside all calibration support it conservatively treats the request as continuing until the public cap or the next forecast. The default service estimate uses the 80th percentile of the conditional remaining length.
 
@@ -31,7 +31,7 @@ For a waiting request, **slack** is its deadline minus the current time and esti
 
 For a horizon of a chosen number of steps, each request contributes its probability of still running at that point multiplied by the blocks it would occupy then. Finishing releases the whole cache. The policy sums the contributions from the running batch, the candidates it has already selected, and the candidate under consideration. The default synthetic horizon is 12 steps. A queued long prompt with a short output may fit the forecast because it can finish within those 12 steps. It must still fit the actual admission budgets today.
 
-Urgent work with at most one estimated decode step of slack can bypass drain and forecast preferences. Requests waiting at least `max_wait_s` rise to the front, oldest first. When an aged request needs room currently occupied by other work, all three cost-based policies pause admission of younger requests until capacity opens. Every policy applies the same hard limits. Forecast errors can change who waits.
+Urgent work with at most one estimated decode step of slack can bypass drain and forecast preferences. Requests waiting at least `max_wait_s` rise to the front, oldest first. When an aged request needs room currently occupied by other work, all three policies that rank by slack pause admission of younger requests until capacity opens. Every policy applies the same hard limits. Forecast errors can change who waits.
 
 ## Device interface and reference model
 
@@ -76,7 +76,7 @@ done
 python scripts/plot_replay.py results/burst-42 results/burst-41 results/burst-43 --output results/burst-figures
 ```
 
-`--steady-control` spreads the identical requests evenly while preserving their deadline budgets. `--scenario mild` lowers burst intensity. `--scenario long-tail` increases the share and duration of long outputs. `--deadline-budget-s 0.4` exercises deadline misses. `--prediction-scale 0.5` and `1.5` shift the calibration lengths for all policies while preserving the evaluation workload. `--restore-s 0` removes simulated copy time. `--policy recovery` runs a single variant.
+`--steady-control` spreads the identical requests evenly while preserving their deadline budgets. `--scenario mild` lowers burst intensity. `--scenario long-tail` increases the share and duration of long outputs. `--deadline-budget-s 0.4` exercises deadline misses. `--prediction-scale 0.5` and `1.5` shift the calibration lengths for all policies while preserving the evaluation workload. `--restore-s 0` removes simulated copy time. `--policy space-based` runs a single variant.
 
 For real arrivals, use the published BurstGPT CSV from commit `d895a53bb7b8ec137d0d2fe203b335835a78c10a`. The reader filters ChatGPT conversation traffic, uses original seconds `[28800, 57600)` for calibration and `[126000, 126600)` for evaluation, retains equal-time order and multiplies elapsed arrival times by 0.002. Zero-output source failures are counted separately before replay. The scorer labels the contiguous time bins around the highest arrival rate above a configured multiple of the window mean. [BurstGPT dataset](https://github.com/HPMLL/BurstGPT/tree/d895a53bb7b8ec137d0d2fe203b335835a78c10a)
 
@@ -86,18 +86,18 @@ git -C ../BurstGPT checkout d895a53bb7b8ec137d0d2fe203b335835a78c10a
 recovery-run --config configs/scheduler-burstgpt.yaml --burstgpt ../BurstGPT/data/BurstGPT_1.csv --output results/burstgpt
 ```
 
-The root `run.json` records settings, source hashes, environment, Git revision, burst labels and timing provenance. `workload.jsonl` and `calibration.json` freeze the two inputs. Each policy has `events.jsonl`, `requests.csv` and `summary.json`. The plot script produces `occupancy.png`, `recovery_goodput.png` and `paired.csv`. The CSV includes each policy's differences from `cost` on the same trace, and keeps rows for unrecovered episodes.
+The root `run.json` records settings, source hashes, environment, Git revision, burst labels and timing provenance. `workload.jsonl` and `calibration.json` freeze the two inputs. Each policy has `events.jsonl`, `requests.csv` and `summary.json`. The plot script produces `occupancy.png`, `recovery_goodput.png` and `paired.csv`. The CSV includes each policy's differences from `time-based` on the same trace, and keeps rows for unrecovered episodes.
 
 ## Results with the supplied CPU fixtures
 
-Each synthetic run with seed 42 below has 98 arrivals. The observation duration is eight seconds. With a 2.5-second deadline, all three dynamic cost-based variants completed all 98 requests on time.
+Each synthetic run with seed 42 below has 98 arrivals. The observation duration is eight seconds. With a 2.5-second deadline, all three dynamic variants that rank by slack completed all 98 requests on time.
 
 | Seed 42 policy | Recovery with 2.5 s deadline | Recovery with 0.4 s deadline | On time with 0.4 s deadline | Goodput with 0.4 s deadline |
 | --- | ---: | ---: | ---: | ---: |
-| Cost | 0.620 s | 0.620 s | 52 / 98 | 6.50 requests/s |
+| Time-based | 0.620 s | 0.620 s | 52 / 98 | 6.50 requests/s |
 | Drain | 0.630 s | 0.635 s | 54 / 98 | 6.75 requests/s |
-| Recovery forecast | 0.648 s | 0.641 s | 54 / 98 | 6.75 requests/s |
+| Space-based | 0.648 s | 0.641 s | 54 / 98 | 6.75 requests/s |
 
-Across seeds 41, 42 and 43, the forecast returned later than cost on all three default bursts. With the long-tail workload it returned later on seeds 41 and 42 and earlier on seed 43 (0.720 s versus 0.803 s). On the tighter 0.4-second deadline the forecast served 65/78, 54/98 and 57/98 on time across those three seeds. Cost served 72/78, 52/98 and 67/98. The forecast's benefit depends on the workload and deadline. These results provide a comparison to repeat after GPU calibration.
+Across seeds 41, 42 and 43, space-based admission returned later than time-based admission on all three default bursts. With the long-tail workload it returned later on seeds 41 and 42 and earlier on seed 43 (0.720 s versus 0.803 s). On the tighter 0.4-second deadline space-based admission served 65/78, 54/98 and 57/98 on time across those three seeds. Time-based admission served 72/78, 52/98 and 67/98. The forecast's benefit depends on the workload and deadline. These results provide a comparison to repeat after GPU calibration.
 
 The historical BurstGPT run used the earlier fixed six-second budget. The current BurstGPT preset derives a target per request from the held-out length predictor and DistServe streaming targets. The historical run used 1,049 calibration requests and 27 eligible held-out arrivals. The source had 66 calibration failures and 3 evaluation failures. All 27 eligible arrivals met their deadline and the dynamic runs stayed in high precision. The window validates real-trace replay and contributes a no-switch observation.

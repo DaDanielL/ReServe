@@ -5,7 +5,14 @@ from dataclasses import dataclass
 from time import perf_counter_ns
 
 from .precision import PrecisionMode
-from .scheduling import AdmissionState, OnlineRequest, RecoveryAwareScheduler, blocks
+from .scheduling import (
+    ADMISSION_POLICIES,
+    AdmissionState,
+    OnlineRequest,
+    RecoveryAwareScheduler,
+    blocks,
+    canonical_policy,
+)
 from .workload import Request
 
 
@@ -150,7 +157,8 @@ class Replay:
     def __init__(self, trace, horizon, settings, timings, scheduler, mode, policy, emit):
         if mode not in {"dynamic", "high", "low"} or not math.isfinite(horizon) or horizon <= 0:
             raise ValueError("invalid replay mode or observation horizon")
-        if policy not in {"cost", "drain", "recovery", "fifo"}:
+        policy = canonical_policy(policy)
+        if policy not in ADMISSION_POLICIES:
             raise ValueError("invalid replay admission policy")
         seen = set()
         previous = 0.0

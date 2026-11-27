@@ -48,7 +48,14 @@ def simulate(trace, settings=None, horizon=6, mode="dynamic", scheduler=None):
     events = []
     scheduler = scheduler or RecoveryAwareScheduler(LengthPredictor([(39, 1), (89, 2)]), 1, 3)
     result = Replay(
-        trace, horizon, s, {"high": timing, "low": timing}, scheduler, mode, "cost", events.append
+        trace,
+        horizon,
+        s,
+        {"high": timing, "low": timing},
+        scheduler,
+        mode,
+        "time-based",
+        events.append,
     ).run()
     return result, events
 
@@ -81,10 +88,10 @@ class AdmissionTests(unittest.TestCase):
         self.assertGreater(model.projected_blocks(replace(req, generated=100), 10, 8), 0)
 
     def test_common_ranking_and_distinct_recovery_guards(self):
-        self.assertEqual(self.select("cost"), ["big"])
+        self.assertEqual(self.select("time-based"), ["big"])
         self.assertEqual(self.select("drain"), [])
-        self.assertEqual(self.select("recovery"), ["small"])
-        for policy in ("drain", "recovery"):
+        self.assertEqual(self.select("space-based"), ["small"])
+        for policy in ("drain", "space-based"):
             self.assertEqual(
                 self.select(policy, replace(self.state, recovery_pressure=False)), ["big"]
             )
@@ -95,28 +102,30 @@ class AdmissionTests(unittest.TestCase):
     def test_urgent_and_aged_requests_bypass_preference_but_obey_capacity(self):
         urgent = replace(self.big, deadline_s=2.05)  # 0.05s slack, 0.1s to the next step.
         aged = replace(self.big, arrival_s=0, deadline_s=99)
-        for policy in ("drain", "recovery"):
+        for policy in ("drain", "space-based"):
             self.assertEqual(self.select(policy, candidates=[urgent]), ["big"])
             self.assertEqual(self.select(policy, replace(self.state, now_s=4), [aged]), ["big"])
             self.assertEqual(
                 self.select(policy, replace(self.state, available_blocks=1), [urgent]), []
             )
-        self.assertEqual(self.select("cost", replace(self.state, prefill_tokens=20)), ["small"])
-        self.assertEqual(self.select("cost", replace(self.state, reserve_blocks=1)), [])
+        self.assertEqual(
+            self.select("time-based", replace(self.state, prefill_tokens=20)), ["small"]
+        )
+        self.assertEqual(self.select("time-based", replace(self.state, reserve_blocks=1)), [])
 
     def test_aged_request_accumulates_room_while_the_running_batch_finishes(self):
         aged = replace(self.big, arrival_s=0)
         young = replace(self.small, arrival_s=3.9)
         state = replace(self.state, now_s=4, prefill_tokens=20)
-        for policy in ("cost", "drain", "recovery"):
+        for policy in ("time-based", "drain", "space-based"):
             self.assertEqual(self.select(policy, state, [aged, young]), [])
         self.assertEqual(self.select("fifo", state, [aged, young]), ["small"])
 
     def test_selected_candidates_share_one_forecast_and_budget(self):
         state = replace(self.state, slots=2, high_target_blocks=29)
         big2 = replace(self.big, request_id="big2", deadline_s=6.5)
-        self.assertEqual(self.select("recovery", state, [self.big, big2]), ["big"])
-        self.assertEqual(self.select("cost", state, [self.big, big2]), ["big", "big2"])
+        self.assertEqual(self.select("space-based", state, [self.big, big2]), ["big"])
+        self.assertEqual(self.select("time-based", state, [self.big, big2]), ["big", "big2"])
 
 
 class ReplayTests(unittest.TestCase):
@@ -144,7 +153,7 @@ class ReplayTests(unittest.TestCase):
         seen = []
 
         class Observer(RecoveryAwareScheduler):
-            def schedule(self, waiting, running, state, service_seconds, policy="recovery"):
+            def schedule(self, waiting, running, state, service_seconds, policy="space-based"):
                 seen.append((state.now_s, tuple(waiting), tuple(running)))
                 return super().schedule(waiting, running, state, service_seconds, policy)
 
@@ -250,7 +259,8 @@ class WorkloadTests(unittest.TestCase):
             path = Path(directory) / "matrix"
             runs = run_experiment(config, path, {})
             self.assertEqual(
-                set(runs), {"fixed_high", "fixed_low", "pressure", "cost", "drain", "recovery"}
+                set(runs),
+                {"fixed_high", "fixed_low", "pressure", "time-based", "drain", "space-based"},
             )
             cohorts = []
             for name, stats in runs.items():
@@ -261,7 +271,7 @@ class WorkloadTests(unittest.TestCase):
                             for r in csv.DictReader(handle)
                         ]
                     )
-                self.assertEqual(stats["duration_s"], runs["cost"]["duration_s"])
+                self.assertEqual(stats["duration_s"], runs["time-based"]["duration_s"])
             self.assertTrue(all(x == cohorts[0] for x in cohorts))
             self.assertTrue(json.loads((path / "run.json").read_text())["calibration_sha256"])
             with self.assertRaises(FileExistsError):

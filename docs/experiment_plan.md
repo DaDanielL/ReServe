@@ -7,7 +7,7 @@
 - [ ] Run a baseline burst and log queueing, TTFT, decoding latency, and KV occupancy.
 - [ ] Add and verify real precision switching without dropping active request state.
 - [ ] Separate recovery waiting from restore transfers and their overlap.
-- [ ] Implement a recovery-aware policy and compare against existing recovery behavior.
+- [ ] Implement a space-based admission policy and compare against existing recovery behavior.
 - [ ] Evaluate quality, deadline goodput, tail latency, and long-request waiting.
 
 ## Initial baseline matrix
@@ -16,9 +16,9 @@
 | --- | --- |
 | Fixed higher precision | Standard engine scheduler |
 | Fixed lower precision | Same engine scheduler |
-| Dynamic precision | Existing pressure-aware recovery policy |
-| Dynamic precision | Same mechanism plus independent cost-aware scheduling |
-| Dynamic precision | Proposed cost-and-recovery-aware policy |
+| Dynamic precision | Shared pressure controller with arrival-order admission (`pressure`) |
+| Dynamic precision | Shared controller with time-based admission |
+| Dynamic precision | Shared controller with space-based admission |
 | Dynamic precision | Simple temporary-region draining policy |
 
 Use the same engine and memory budget where possible. A mock run is never a row

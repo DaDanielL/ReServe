@@ -40,6 +40,7 @@ def launch(opts):
     repo = opts.repo.resolve()
     if not (repo / "src/recovery_serving/live.py").is_file():
         raise SystemExit("Run from the ReServe frank-scheduler checkout or pass --repo PATH.")
+    sys.path.insert(0, str(repo / "src"))
     out = (repo / opts.out).resolve()
     data = (repo / "data/live").resolve()
     code = case_signature(repo)
@@ -157,7 +158,7 @@ def launch(opts):
                 0,
                 "--variants",
                 "fixed_high",
-                "recovery",
+                "space-based",
             ],
             live=True,
         )
@@ -175,8 +176,8 @@ def launch(opts):
                 8,
                 "--variants",
                 "fixed_high",
-                "cost",
-                "recovery",
+                "time-based",
+                "space-based",
             ],
             live=True,
             figs=True,
@@ -202,7 +203,6 @@ def launch(opts):
                     severe.append(path)
         trace = data / "BurstGPT_1.csv"
         if not opts.plan:
-            sys.path.insert(0, str(repo / "src"))
             from recovery_serving.live_data import source_file
 
             trace = source_file("burstgpt", data)
@@ -337,10 +337,25 @@ def main():
     launch(opts)
 
 
-def write_live_csv(output_folder):
-    """Summarize a single live run in live-comparison.csv. Deltas are policy minus cost."""
-    folder = Path(output_folder)
+def live_runs(folder):
+    """Index measurements by repetition and current policy, keeping their original paths."""
+    from recovery_serving.scheduling import canonical_policy
+
     summaries = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+    runs = {}
+    for label, stats in summaries.items():
+        prefix, repeat, policy = label.split("-", 2)
+        key = (int(repeat), canonical_policy(policy))
+        if prefix != "rep" or key in runs:
+            raise ValueError(f"Invalid or duplicate measurement {label} in {folder}")
+        runs[key] = (folder / label, stats)
+    return runs
+
+
+def write_live_csv(output_folder):
+    """Summarize a live run. Paired differences use time-based admission as the baseline."""
+    folder = Path(output_folder)
+    runs = live_runs(folder)
 
     def percentile99(values):
         if not values:
@@ -365,14 +380,12 @@ def write_live_csv(output_folder):
         "low_switches",
     )
     output = []
-    for name, stats in sorted(summaries.items()):
-        prefix, repeat, policy = name.split("-", 2)
-        if prefix != "rep":
-            raise ValueError("Expected a recovery_serving.live summary in " + str(folder))
-        cost = summaries.get(f"rep-{repeat}-cost")
-        requests = json.loads((folder / name / "requests.json").read_text(encoding="utf-8"))
+    for (repeat, policy), (path, stats) in sorted(runs.items()):
+        reference = runs.get((repeat, "time-based"))
+        baseline_stats = reference[1] if reference else None
+        requests = json.loads((path / "requests.json").read_text(encoding="utf-8"))
         long_group = stats["by_reference_length"]["long"]
-        common = {"repeat": int(repeat), "policy": policy}
+        common = {"repeat": repeat, "policy": policy}
         common.update({field: stats[field] for field in group_fields})
         common.update(
             {
@@ -386,12 +399,14 @@ def write_live_csv(output_folder):
                 "long_p95_queue_s": long_group["p95_queue_s"],
             }
         )
-        common["goodput_delta_vs_cost_rps"] = (
-            stats["deadline_goodput_rps"] - cost["deadline_goodput_rps"] if cost else None
+        common["goodput_delta_vs_time_based_rps"] = (
+            stats["deadline_goodput_rps"] - baseline_stats["deadline_goodput_rps"]
+            if baseline_stats
+            else None
         )
         ref = (
-            {(e["burst_start_s"], e["burst_end_s"]): e for e in cost["burst_recovery"]}
-            if cost
+            {(e["burst_start_s"], e["burst_end_s"]): e for e in baseline_stats["burst_recovery"]}
+            if baseline_stats
             else {}
         )
         episodes = stats["burst_recovery"] or [{"status": "no_burst"}]
@@ -409,10 +424,13 @@ def write_live_csv(output_folder):
                     "recovery_status": episode["status"],
                     "recovery_s": episode.get("recovery_s"),
                     "observed_until_s": episode.get("observed_until_s"),
-                    "cost_recovery_status": baseline.get(
-                        "status", "no_burst" if cost and not cost["burst_recovery"] else None
+                    "time_based_recovery_status": baseline.get(
+                        "status",
+                        "no_burst"
+                        if baseline_stats and not baseline_stats["burst_recovery"]
+                        else None,
                     ),
-                    "recovery_delta_vs_cost_s": delta,
+                    "recovery_delta_vs_time_based_s": delta,
                 }
             )
     if not output:
@@ -426,7 +444,7 @@ def write_live_csv(output_folder):
 
 
 def write_live_plots(folder):
-    """Render two figures for a CUDA comparison containing cost and recovery."""
+    """Render a CUDA comparison containing time-based and space-based admission."""
     import matplotlib
 
     matplotlib.use("Agg")
@@ -435,13 +453,13 @@ def write_live_plots(folder):
 
     folder = Path(folder)
     meta = json.loads((folder / "run.json").read_text(encoding="utf-8"))
-    summaries = json.loads((folder / "summary.json").read_text(encoding="utf-8"))
+    runs = live_runs(folder)
     if not str(meta["hardware"]["device"]).startswith("cuda") or not {
-        "rep-01-recovery",
-        "rep-01-cost",
-    }.issubset(summaries):
+        (1, "space-based"),
+        (1, "time-based"),
+    }.issubset(runs):
         return
-    event_path = folder / "rep-01-recovery" / "events.jsonl"
+    event_path = runs[1, "space-based"][0] / "events.jsonl"
     with event_path.open(encoding="utf-8") as stream:
         events = [json.loads(line) for line in stream if line.strip()]
     high = next(e["high_blocks"] for e in events if e["event"] == "initial_mode")
@@ -470,7 +488,7 @@ def write_live_plots(folder):
         for i, e in enumerate(e for e in events if e["event"] == event):
             ax.axvline(e["time_s"], color=color, ls=":", label=label if i == 0 else None)
     ax.set(
-        title="Recovery policy · repetition 1",
+        title="Space-based admission · repetition 1",
         xlabel="Elapsed time (s)",
         ylabel="Logical KV tokens",
     )
@@ -488,17 +506,16 @@ def write_live_plots(folder):
         "fixed_high": "#6b6b6b",
         "fixed_low": "#a66f18",
         "pressure": "#7762ab",
-        "cost": "#37669d",
+        "time-based": "#37669d",
         "drain": "#189383",
-        "recovery": "#ba462b",
+        "space-based": "#ba462b",
     }
     statuses = ["fixed_mode", "no_switch", "censored", "no_burst"]
     fig, (timed, other) = plt.subplots(
         1, 2, sharey=True, figsize=(10, 5), width_ratios=(1.5, 1), layout="constrained"
     )
     paired, present = {}, set()
-    for name, stats in sorted(summaries.items()):
-        rep, policy = name.rsplit("-", 1)
+    for (rep, policy), (_, stats) in sorted(runs.items()):
         present.add(policy)
         goodput = stats["deadline_goodput_rps"]
         for episode in stats["burst_recovery"] or [{"status": "no_burst"}]:
@@ -514,8 +531,8 @@ def write_live_plots(folder):
                     statuses.index(status) + offset, goodput, color=colors[policy], s=36, alpha=0.8
                 )
     for pairs in paired.values():
-        if "cost" in pairs and "recovery" in pairs:
-            timed.plot(*zip(pairs["cost"], pairs["recovery"]), color=".65", lw=1, zorder=1)
+        if "time-based" in pairs and "space-based" in pairs:
+            timed.plot(*zip(pairs["time-based"], pairs["space-based"]), color=".65", lw=1, zorder=1)
     timed.set(
         title="Episodes with measured recovery",
         xlabel="High ready minus burst end (s)",
@@ -531,9 +548,7 @@ def write_live_plots(folder):
         if p in present
     ]
     fig.legend(handles=handles, loc="outside lower center", ncol=3, frameon=False)
-    fig.suptitle(
-        "GPU recovery and deadline goodput · lines pair cost and recovery within a repetition and burst"
-    )
+    fig.suptitle("GPU recovery and deadline goodput · paired time-based and space-based admissions")
     fig.savefig(folder / "gpu-recovery-goodput.png", dpi=160, bbox_inches="tight")
     plt.close(fig)
 

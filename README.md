@@ -19,6 +19,8 @@ python -m recovery_serving.live --device cuda:0 --output results/qwen-local
 
 The command downloads the pinned Qwen2.5-1.5B-Instruct checkpoint and public workload, profiles disjoint prompts, freezes request deadlines, and executes all six policies on one device. For CPU use `--device cpu`. The first GPU run uses FP16. The flags `--source qwen-math` and `--deadline-mode artifact` select the public Qwen math cohort and the JITServe stored benchmark budgets, respectively. Artifact budgets apply to JITServe prompts. [Local run guide and paper evidence](docs/live-experiment.md) · [Kaggle GPU notebook](notebooks/kaggle_live.ipynb)
 
+The scheduler policies are named `time-based` (deadline slack) and `space-based` (deadline slack with a cache forecast). Commands and YAML also accept their historical names, `cost` and `recovery`. New runs use the current names for directories, summaries, and plots. The report scripts can read earlier run directories. The outcome `recovery_s` measures the return to high precision.
+
 ### Run the pilot and full experiment suite
 
 With the GPU environment active, run these commands from the ReServe repository root.
@@ -40,7 +42,7 @@ Append `--plan` to either command to preview the cases before running them.
 - A CPU-only mock backend and FIFO / earliest-deadline-first client admission.
 - Per-request timings, an event log, configuration and Git metadata, and summary metrics.
 - A Kaggle launcher, plotting script, environment check, and GitHub CPU checks.
-- A deterministic CPU replay with deadline-slack, drain, and recovery-aware admission.
+- A deterministic CPU replay with time-based, drain, and space-based admission.
 - Six matched comparisons, synthetic bursts, a BurstGPT CSV reader, per-request and recovery metrics, and plots.
 
 The mock backend uses artificial sleeps to check the client harness. The replay backend

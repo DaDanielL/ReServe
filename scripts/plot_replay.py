@@ -8,6 +8,8 @@ from pathlib import Path
 
 import matplotlib
 
+from recovery_serving.scheduling import canonical_policy
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -78,7 +80,7 @@ def timeline(folder, policy, output):
             label="Transfer in progress",
         )
     ax.set(
-        title=f"{policy} admission · CPU replay · {meta['timing_source']}",
+        title=f"{canonical_policy(policy)} admission · CPU replay · {meta['timing_source']}",
         xlabel="Time from start (s)",
         ylabel="KV blocks",
     )
@@ -91,18 +93,23 @@ def comparison(folders, output):
     fig, ax = plt.subplots(figsize=(9, 4.8), layout="constrained")
     missing = Counter()
     handles, rows = {}, []
-    colors = {"pressure": "#596779", "cost": "#116b8e", "drain": "#a35726", "recovery": "#357343"}
+    colors = {
+        "pressure": "#596779",
+        "time-based": "#116b8e",
+        "drain": "#a35726",
+        "space-based": "#357343",
+    }
     for folder in folders:
-        data = read_json(folder / "summary.json")
+        data = {canonical_policy(k): v for k, v in read_json(folder / "summary.json").items()}
         meta = read_json(folder / "run.json")
-        cost = data.get("cost")
+        baseline = data.get("time-based")
         for name, summary in data.items():
             episodes = summary["recovery"] or [{"status": "no_burst", "recovery_s": None}]
             for i, ep in enumerate(episodes):
                 ready, rate = ep["recovery_s"], summary["deadline_goodput_rps"]
                 reference = (
-                    cost["recovery"][i]["recovery_s"]
-                    if cost and i < len(cost["recovery"])
+                    baseline["recovery"][i]["recovery_s"]
+                    if baseline and i < len(baseline["recovery"])
                     else None
                 )
                 rows.append(
@@ -115,11 +122,11 @@ def comparison(folders, output):
                         "recovery_s": ready,
                         "goodput_rps": rate,
                         "on_time_fraction": summary["deadline_attainment"],
-                        "delta_recovery_vs_cost_s": ready - reference
+                        "delta_recovery_vs_time_based_s": ready - reference
                         if ready is not None and reference is not None
                         else None,
-                        "delta_goodput_vs_cost_rps": rate - cost["deadline_goodput_rps"]
-                        if cost
+                        "delta_goodput_vs_time_based_rps": rate - baseline["deadline_goodput_rps"]
+                        if baseline
                         else None,
                     }
                 )
@@ -157,7 +164,10 @@ def main():
         "run_dirs", type=Path, nargs="+", help="comparison directories, one per seed"
     )
     parser.add_argument(
-        "--timeline-policy", default="recovery", help="policy shown from the first run"
+        "--timeline-policy",
+        type=canonical_policy,
+        default="space-based",
+        help="policy shown from the first run",
     )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -166,10 +176,15 @@ def main():
         for d in args.run_dirs
     ):
         parser.error("expected replay outputs")
-    if not (args.run_dirs[0] / args.timeline_policy / "events.jsonl").is_file():
+    stored = read_json(args.run_dirs[0] / "summary.json")
+    timeline_policy = next((p for p in stored if canonical_policy(p) == args.timeline_policy), None)
+    if (
+        timeline_policy is None
+        or not (args.run_dirs[0] / timeline_policy / "events.jsonl").is_file()
+    ):
         parser.error("timeline policy is absent from the first run")
     args.output.mkdir(parents=True, exist_ok=False)
-    timeline(args.run_dirs[0], args.timeline_policy, args.output)
+    timeline(args.run_dirs[0], timeline_policy, args.output)
     comparison(args.run_dirs, args.output)
 
 

@@ -15,7 +15,7 @@ from .live_benchmark import profile_prompts, run_policy, warmup
 from .live_data import SOURCES, Profile, arrival_trace, digest, load_prompts, split_prompts
 from .metrics import percentile
 from .run import environment
-from .scheduling import OnlineRequest
+from .scheduling import OnlineRequest, canonical_policy
 from .workload import peak_window
 
 
@@ -40,7 +40,13 @@ def parser():
     p.add_argument("--burst-start", type=int, default=126000, help="Original BurstGPT seconds")
     p.add_argument("--arrival-scale", type=float, default=0.02, help="1 preserves trace gaps")
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--variants", nargs="+", choices=list(VARIANTS), default=list(VARIANTS))
+    p.add_argument(
+        "--variants",
+        nargs="+",
+        type=canonical_policy,
+        choices=list(VARIANTS),
+        default=list(VARIANTS),
+    )
     p.add_argument("--repeats", type=int, default=1)
     p.add_argument("--swap-layers", type=int, default=2)
     p.add_argument("--batch-size", type=int, default=4)

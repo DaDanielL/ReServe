@@ -16,7 +16,7 @@ from .backends.mock import MockBackend
 from .config import load_config
 from .experiment import VARIANTS, run_experiment
 from .metrics import summarize
-from .scheduling import priority
+from .scheduling import canonical_policy, priority
 from .workload import generate_trace
 
 
@@ -154,7 +154,10 @@ def main():
     parser.add_argument("--scenario", help="select a named workload variant from the replay config")
     parser.add_argument("--seed", type=int, help="override the evaluation trace seed")
     parser.add_argument(
-        "--policy", choices=["compare", *VARIANTS], help="run a replay comparison or one variant"
+        "--policy",
+        type=canonical_policy,
+        choices=["compare", *VARIANTS],
+        help="run a replay comparison or one variant",
     )
     parser.add_argument(
         "--steady-control", action="store_true", help="evenly space the same replay requests"

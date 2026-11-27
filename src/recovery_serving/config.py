@@ -7,6 +7,7 @@ import yaml
 
 from .experiment import VARIANTS
 from .replay import ReplaySettings, StepTiming
+from .scheduling import canonical_policy
 
 
 def _positive(value):
@@ -62,7 +63,8 @@ def load_config(path: str | Path, *, scenario: str | None = None) -> dict:
             if config.get("mock", {}).get(name, -1) < 0:
                 raise ValueError(f"mock.{name} must be nonnegative")
     else:
-        if config.get("policy") not in {"compare", *VARIANTS}:
+        config["policy"] = canonical_policy(config.get("policy", ""))
+        if config["policy"] not in {"compare", *VARIANTS}:
             raise ValueError("unknown replay comparison")
         ReplaySettings(**config["replay"])
         for mode in ("high", "low"):

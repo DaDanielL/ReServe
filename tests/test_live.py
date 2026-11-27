@@ -1,5 +1,6 @@
 import csv
 import importlib.util
+import json
 import tempfile
 import unittest
 from dataclasses import replace
@@ -14,6 +15,7 @@ from recovery_serving.live_benchmark import run_policy
 from recovery_serving.live_data import Encoded, Profile, Prompt, arrival_trace, split_prompts
 from recovery_serving.precision import PrecisionMode
 from recovery_serving.scheduling import OnlineRequest
+from scripts.run_reserve_experiments import live_runs
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -123,6 +125,19 @@ class ToyEngine:
 
 
 class LiveExecution(unittest.TestCase):
+    def test_current_and_historical_policy_names_in_commands_and_reports(self):
+        for time_name, space_name in (("time-based", "space-based"), ("cost", "recovery")):
+            with self.subTest(time=time_name), tempfile.TemporaryDirectory() as tmp:
+                args = parser().parse_args(["--output", tmp, "--variants", time_name, space_name])
+                validate(args)
+                self.assertEqual(args.variants, ["time-based", "space-based"])
+                folder = Path(tmp)
+                stats = {f"rep-02-{name}": {"requests": 24} for name in (time_name, space_name)}
+                (folder / "summary.json").write_text(json.dumps(stats))
+                indexed = live_runs(folder)
+                for name, saved in zip(args.variants, stats):
+                    self.assertEqual(indexed[2, name], (folder / saved, stats[saved]))
+
     def test_wall_clock_scoring_counts_capped_requests_and_recovery(self):
         prompts = [Encoded(row("a", 1), [1], "x"), Encoded(row("b", 2), [2], "y")]
         online = [OnlineRequest(p.source.source_id, 0.0, 10.0, 1) for p in prompts]
@@ -137,7 +152,7 @@ class LiveExecution(unittest.TestCase):
             online,
             {"low": prof, "high": prof},
             "dynamic",
-            "recovery",
+            "space-based",
             a,
             [(0, 0.1)],
             events.append,

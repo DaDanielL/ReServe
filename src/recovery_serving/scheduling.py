@@ -9,6 +9,14 @@ from math import ceil
 from .precision import PrecisionMode
 from .workload import Request
 
+_POLICY_ALIASES = {"cost": "time-based", "recovery": "space-based"}
+ADMISSION_POLICIES = {"fifo", "time-based", "drain", "space-based"}
+
+
+def canonical_policy(name: str) -> str:
+    """Resolve a policy identifier from a command, configuration, or saved run."""
+    return _POLICY_ALIASES.get(name, name)
+
 
 def priority(request: Request, policy: str) -> float:
     if policy == "fifo":
@@ -124,10 +132,11 @@ class RecoveryAwareScheduler:
         running: Sequence[OnlineRequest],
         state: AdmissionState,
         service_seconds: Callable[[OnlineRequest, int], float],
-        policy: str = "recovery",
+        policy: str = "space-based",
     ) -> list[str]:
         """Return IDs to admit in this batch. The device owns all hard limits."""
-        if policy not in {"fifo", "cost", "drain", "recovery"}:
+        policy = canonical_policy(policy)
+        if policy not in ADMISSION_POLICIES:
             raise ValueError(f"Unknown admission policy: {policy}")
         if state.slots <= 0 or not waiting:
             return []
@@ -142,7 +151,7 @@ class RecoveryAwareScheduler:
             return (1, slack, req.arrival_s, req.request_id)
 
         recovering = state.recovery_pressure and state.mode == PrecisionMode.LOW
-        forecast = recovering and policy == "recovery"
+        forecast = recovering and policy == "space-based"
         projected = (
             sum(
                 self.predictor.projected_blocks(

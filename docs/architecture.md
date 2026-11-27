@@ -16,7 +16,7 @@ A separate CPU replay calls `RecoveryAwareScheduler` at iteration boundaries. Th
 3. Add per-request and per-allocation identifiers so KV ownership is observable.
 4. Implement safe precision transitions and elastic cache capacity, retaining active state.
 5. Profile recovery using the existing baseline policy.
-6. Add the recovery-aware policy only after identifying avoidable waiting.
+6. Add the space-based admission policy only after identifying avoidable waiting.
 
 A streaming HTTP client can benchmark an engine, but controlling request order at
 the HTTP layer does not provide token-level scheduling or KV placement. Those
